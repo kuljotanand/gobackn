@@ -76,5 +76,7 @@ ssize_t  maybe_sendto(int  s, const void *buf, size_t len, int flags, \
 uint16_t checksum(uint16_t *buf, int nwords);
 gbnhdr make_header(int type_command, int sequence_number);
 
+struct sockaddr *sender_global;
+socklen_t sender_socklen_global;
 
 #endif
