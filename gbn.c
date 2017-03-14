@@ -30,7 +30,7 @@ int check_header(char *buffer, int length){
 		return 0;
 	}
 }
-}
+
 
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
@@ -85,27 +85,26 @@ return 0;
 
 
 int gbn_listen(int sockfd, int backlog){
-gbnhdr ack_packet = recvfrom(sockfd, &buffer, sizeof buffer, 0, sockaddr, sender_socklen_global);
+int errno;
+char buffer[1028];
+int ack_packet = recvfrom(sockfd, buffer, sizeof buffer, 0, sender_global, &sender_socklen_global); //TODO: change last 2 var names
+printf ("ACK packet size is %d", ack_packet);
 	/* TODO: Your code here. */
 	//here we will check if our SYN packet is correct
 	// then we will move on to 'gbn_accept' to send a SYNACK back
-	int check_val = check_header(&ack_packet, sizeof ack_packet);
+	int check_val = check_header(buffer, ack_packet);
 	if (check_val == -1){
 		return (-1);
 	}
-	fprint ("we are good to go")
 	return 0;
-
-	// return 0;
-	// return (recvfrom(sockfd, backlog));
 }
 
 
 int gbn_bind(int sockfd, const struct sockaddr *server, socklen_t socklen){
 	/* TODO: Your code here. */
 
-sockaddr = server;
-socklen_t = socklen;
+sender_global = server;
+sender_socklen_global = socklen;
 
 	if (sockfd < 0) {
 		return(-1);
