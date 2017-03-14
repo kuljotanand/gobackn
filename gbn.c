@@ -79,7 +79,7 @@ return 0;
 
 
 int gbn_listen(int sockfd, int backlog){
-gbnhdr ack_packet = recvfrom(sockfd, &buffer, 4, 0, kjkj)
+gbnhdr ack_packet = recvfrom(sockfd, &buffer, 4, 0, )
 	/* TODO: Your code here. */
 	//here we will check if our SYN packet is correct
 	// then we will move on to 'gbn_accept' to send a SYNACK back
