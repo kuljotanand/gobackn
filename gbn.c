@@ -88,7 +88,7 @@ int gbn_listen(int sockfd, int backlog){
 int errno;
 char buffer[1028];
 int ack_packet = recvfrom(sockfd, buffer, sizeof buffer, 0, sender_global, &sender_socklen_global); //TODO: change last 2 var names
-printf ("ACK packet size sis %d", ack_packet);
+printf ("ACK packet size is %d", ack_packet);
 	/* TODO: Your code here. */
 	//here we will check if our SYN packet is correct
 	// then we will move on to 'gbn_accept' to send a SYNACK back
