@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
 		exit(-1);
 	}
 
+
 	/*----- Reading from the socket and dumping it to the file -----*/
 	while(1){
 		if ((numRead = gbn_recv(newSockfd, buf, DATALEN, 0)) == -1){
@@ -64,6 +65,8 @@ int main(int argc, char *argv[])
 		else if (numRead == 0)
 			break;
 		fwrite(buf, 1, numRead, outputFile);
+		fclose(outputFile); //TODO: remove later. only for testing
+		exit(-1); // TODO: remove later. only for testing
 	}
 
 	/*----- Closing the socket -----*/

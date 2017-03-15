@@ -80,4 +80,7 @@ check_header(char *buffer, int ack_packet);
 struct sockaddr *sender_global;
 socklen_t sender_socklen_global;
 
+struct sockaddr *receiver_global;
+socklen_t receiver_socklen_global;
+
 #endif
