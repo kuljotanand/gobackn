@@ -1,5 +1,7 @@
 #include "gbn.h"
 
+state_t s_machine;
+
 uint16_t checksum(uint16_t *buf, int nwords)
 {
 	uint32_t sum;
@@ -32,6 +34,9 @@ gbnhdr make_header_with_data(int type_command, int sequence_number, char *buffer
 	return header;
 }
 
+void timeout_handler() {
+	printf("TIMEOUT HAPPENED.");
+}
 
 int check_header(char *buffer, int length){
 	if (length != 4){
@@ -72,7 +77,7 @@ int check_if_data_packet(char *buffer){
 		return 0;
 	}
 	else{
-		return (-1);
+		return -1;
 	}
 }
 
@@ -82,8 +87,15 @@ int check_if_fin_packet(char *buffer){
 		return 0;
 	}
 	else{
-		return (-1);
+		return -1;
 	}
+}
+
+int check_if_synack(char * buffer) {
+	if (buffer[0] == SYNACK) {
+		return 0;
+	}
+	return -1;
 }
 //
 //
@@ -220,19 +232,64 @@ int gbn_close(int sockfd, int isFin){
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
 	/* TODO: Your code here. */
-
 	receiver_global = server;
 	receiver_socklen_global = socklen;
 
-	if (sockfd < 0) {
+	// If connection is broken
+	if (sockfd < 0)
 		return(-1);
-	}
-	else {
-		gbnhdr create_syn_header = make_header(SYN, 0);
+
+	int attempts = 0;
+	gbnhdr create_syn_header = make_header(SYN, 0);
+	s_machine.state = SYN_SENT;
+	s_machine.window_size = 1; // only sending 1 SYN packet
+
+	// Attempt to send the SYN packet up to 5 times
+	while (s_machine.state == SYN_SENT && attempts < 5) {
+
+		int errno; // Track error state for timeouts
 		int sendsyn = sendto(sockfd, &create_syn_header, 4, 0, server, socklen); //hardcoded 4 since that's always the length of the packet header
-		// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
-		if (sendsyn == -1) return(-1);
+
+		alarm(TIMEOUT); // Start a one second timer
+		if (sendsyn == -1){
+			continue;
+		}
+
+		char buf[1030]; // buffer for incoming ACK packet
+		int ack_bytes = recvfrom(sockfd, buf, sizeof buf, 0, sender_global, sender_socklen_global);
+		// Flow is paused until bytes are recieved
+
+		// If nothing was recieved, aka a timeout occurred
+		if (errno == EINTR) {
+			printf("SYNACK NEVER CAME, TIMED OUT\n");
+			attempts++;
+		}
+		else { // a packet was sent back from the reciever
+			// If a synack was received
+			if (check_if_synack(buf) == 0) {
+				s_machine.state = ESTABLISHED;
+				printf("MESSAGE SUCCESFULLY ACKED\n");
+				return 0;
+			}
+
+			else {
+				printf("SYNACK NOT RECEIVED, TRY AGAIN\n");
+				attempts++;
+			}
+
+			receiver_global = server;
+			receiver_socklen_global = socklen;
+		}
 	}
+
+	if (attempts >= 5) {
+		s_machine.state = CLOSED;
+	}
+
+	if (s_machine.state == CLOSED) {
+		return -1;
+	}
+
 return 0;
 }
 
@@ -277,6 +334,14 @@ int gbn_socket(int domain, int type, int protocol){
 
 	/*----- Randomizing the seed. This is used by the rand() function -----*/
 	srand((unsigned)time(0));
+
+	// Prepare timeout handling
+	struct sigaction sact = {
+    .sa_handler = timeout_handler,
+    .sa_flags = 0,
+  };
+
+	sigaction(SIGALRM, &sact, NULL);
 
 	/* TODO: Your code here. */
 	int data = socket(domain, type, protocol);

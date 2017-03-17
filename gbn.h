@@ -47,7 +47,9 @@ typedef struct {
 typedef struct state_t{
 
 	/* TODO: Your state information could be encoded here. */
-
+	int state;
+	uint8_t seqnum;
+	uint8_t window_size;
 } state_t;
 
 enum {
@@ -80,6 +82,7 @@ int check_header(char *buffer, int ack_packet);
 int send_packet(int sockfd, char buf[], int data_length);
 int check_if_fin(char *buffer);
 int check_if_data(char *buffer);
+int check_if_synack(char * buffer);
 
 
 struct sockaddr *sender_global;
