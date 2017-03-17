@@ -1,1 +1,1 @@
-kj is sending this file
+This should be a fun project in which you will go one level down in the networking stack compared to Lab 1.

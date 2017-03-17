@@ -41,6 +41,7 @@ typedef struct {
 	uint8_t  seqnum;          /* sequence number of the packet              */
     uint16_t checksum;        /* header and payload checksum                */
     uint8_t data[DATALEN];    /* pointer to the payload                     */
+		uint16_t lenData;        /* header and payload checksum                */
 } __attribute__((packed)) gbnhdr;
 
 typedef struct state_t{
@@ -75,7 +76,8 @@ ssize_t  maybe_sendto(int  s, const void *buf, size_t len, int flags, \
 
 uint16_t checksum(uint16_t *buf, int nwords);
 gbnhdr make_header(int type_command, int sequence_number);
-check_header(char *buffer, int ack_packet);
+int check_header(char *buffer, int ack_packet);
+int send_packet(int sockfd, char buf[], int data_length);
 
 struct sockaddr *sender_global;
 socklen_t sender_socklen_global;
