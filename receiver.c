@@ -74,11 +74,11 @@ while(1){
 }
 
 	// TODO: uncomment this when writing teardown FIN step
-	// /*----- Closing the socket -----*/
-	// if (gbn_close(sockfd) == -1){
-	// 	perror("gbn_close");
-	// 	exit(-1);
-	// }
+	/*----- Closing the socket -----*/
+	if (gbn_close(sockfd, 0) == -1){
+		perror("gbn_close");
+		exit(-1);
+	}
 
 	/*----- Closing the file -----*/
 	if (fclose(outputFile) == EOF){

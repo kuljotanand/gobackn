@@ -149,7 +149,15 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	int packet_type_recd;
 	packet_type_recd = check_if_data_packet(data_buffer);
 	if (packet_type_recd != 0){
-		return 0;
+		gbnhdr create_finack_header = make_header(FINACK, 0);
+		int sendfinack = sendto(sockfd, &create_finack_header, 4, 0, sender_global, sender_socklen_global);
+		if (sendfinack == -1){
+			return(-1);
+		}
+		else{
+			printf ("%s\n", "SENT THE FINACK");
+			return 0;
+		}
 	}
 	else{
 		printf("BYTES RECEIVED %d\n", bytes_recd_in_data );
@@ -170,19 +178,34 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	}
 }
 
-int gbn_close(int sockfd){
+// if fin, isFin = 1, else isFin = 0 for Finack
+int gbn_close(int sockfd, int isFin){
 	/* TODO: Your code here. */
+
 	if (sockfd < 0) {
 		return(-1);
 	}
+
 	else {
-		gbnhdr create_fin_header = make_header(FIN, 0);
-		int sendfin = sendto(sockfd, &create_fin_header, 4, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
-		// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
-		if (sendfin == -1) return(-1);
+		if (isFin == 1) {
+			gbnhdr create_fin_header = make_header(FIN, 0);
+			int sendfin = sendto(sockfd, &create_fin_header, 4, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
+			// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
+			if (sendfin == -1)
+				return-1;
+			printf ("%s\n", "SENT THE FIN");
+		}
+		// FINACK
+		else {
+			gbnhdr create_finack_header = make_header(FINACK, 0);
+			int sendfinack = sendto(sockfd, &create_finack_header, 4, 0, sender_global, sender_socklen_global);
+			if (sendfinack = -1)
+				return -1;
+			printf ("%s\n", "SENT THE FINACK");
+		}
 	}
-printf ("%s\n", "SENT THE FIN");
-return 0;
+
+	return 0;
 }
 
 // int gbn_close(int sockfd){
