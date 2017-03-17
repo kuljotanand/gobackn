@@ -107,7 +107,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			track += cur_size;
 			len = len - cur_size;
 		}
-		printf("%s","FUCKING CLOSE");
+		printf("%s","CLOSE");
 		// printf("track: %d %s", track, new_buf);
 	}
 

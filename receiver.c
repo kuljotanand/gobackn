@@ -63,7 +63,7 @@ int main(int argc, char *argv[])
 		}
 		else if (numRead == 0)
 			break;
-		// printf("NUM READ FUCK YOU KJ: %d\n", numRead);
+		// printf("NUM READ: %d\n", numRead);
 		printf("DATA RECIEVED:%s\n", buf);
 		fwrite(buf, 1, numRead, outputFile);
 	}
