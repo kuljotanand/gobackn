@@ -57,7 +57,7 @@ int main(int argc, char *argv[]){
 	}
 
 	/*----- Closing the socket -----*/
-	if (gbn_close(sockfd) == -1){
+	if (gbn_close(sockfd) == -1){ // using gbd_close only for sender functionality
 		perror("gbn_close");
 		exit(-1);
 	}

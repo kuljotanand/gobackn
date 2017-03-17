@@ -56,23 +56,29 @@ int main(int argc, char *argv[])
 	}
 
 	/*----- Reading from the socket and dumping it to the file -----*/
-	while(1){
-		if ((numRead = gbn_recv(newSockfd, buf, DATALEN, 0)) == -1){
-			perror("gbn_recv");
-			exit(-1);
-		}
-		else if (numRead == 0)
-			break;
-		// printf("NUM READ: %d\n", numRead);
-		printf("DATA RECIEVED:%s\n", buf);
-		fwrite(buf, 1, numRead, outputFile);
-	}
-
-	/*----- Closing the socket -----*/
-	if (gbn_close(sockfd) == -1){
-		perror("gbn_close");
+// int counter = 0; // TODO: checking only
+while(1){
+	if ((numRead = gbn_recv(newSockfd, buf, DATALEN, 0)) == -1){
+		perror("gbn_recv");
 		exit(-1);
 	}
+	else if (numRead == 0)
+	break;
+	// printf("NUM READ: %d\n", numRead);
+	printf("DATA RECIEVED:%s\n", buf); // TODO: checking only
+	// counter = counter + 1; // TODO: checking only
+	fwrite(buf, 1, numRead, outputFile);
+
+	// if(counter == 3) { // TODO: checking only
+	// 	break;
+}
+
+	// TODO: uncomment this when writing teardown FIN step
+	// /*----- Closing the socket -----*/
+	// if (gbn_close(sockfd) == -1){
+	// 	perror("gbn_close");
+	// 	exit(-1);
+	// }
 
 	/*----- Closing the file -----*/
 	if (fclose(outputFile) == EOF){

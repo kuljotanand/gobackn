@@ -78,11 +78,15 @@ uint16_t checksum(uint16_t *buf, int nwords);
 gbnhdr make_header(int type_command, int sequence_number);
 int check_header(char *buffer, int ack_packet);
 int send_packet(int sockfd, char buf[], int data_length);
+int check_if_fin(char *buffer);
+int check_if_data(char *buffer);
+
 
 struct sockaddr *sender_global;
 socklen_t sender_socklen_global;
 
 struct sockaddr *receiver_global;
 socklen_t receiver_socklen_global;
+
 
 #endif

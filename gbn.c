@@ -42,26 +42,51 @@ int check_header(char *buffer, int length){
 	}
 }
 
-int check_data_packet(char *buffer, int length){
-	if (buffer[0] == DATA){
-		return 0;
-	}
-	else {
-		return(-1);
-	}
-}
+
+// int check_data_packet(char *buffer, int length){
+// 	if (buffer[0] == DATA){
+// 		return 0;
+// 	}
+// 	else {
+// 		return(-1);
+// 	}
+// }
+
 
 // Sends a packet with the appropriate 4 byte header
 int send_packet(int sockfd,  char buf[], int data_length) {
 	gbnhdr create_header_with_data = make_header_with_data(DATA, 0, buf, data_length);
 	// printf("VENMO");
 	printf ("data sent: %s\n", create_header_with_data.data);
-	printf("DATA LENGTH %d", create_header_with_data.lenData);
+	printf("DATA LENGTH %d\n", create_header_with_data.lenData);
 	// printf(buf);
 	int senddata = sendto(sockfd, &create_header_with_data, sizeof create_header_with_data, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
 	// 4 from: DATA =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
 	if (senddata == -1) return(-1);
 }
+
+
+// checks if the packet received is DATA packet
+int check_if_data_packet(char *buffer){
+	if (buffer[0] == DATA){
+		return 0;
+	}
+	else{
+		return (-1);
+	}
+}
+
+// checks if the data received is FIN packet
+int check_if_fin_packet(char *buffer){
+	if (buffer[0] == FIN){
+		return 0;
+	}
+	else{
+		return (-1);
+	}
+}
+//
+//
 
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	/* TODO: Your code here. */
@@ -88,6 +113,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			}
 			else {
 				cur_size = len;
+				printf ("CUR SIZE: %d", cur_size);
 			}
 			memcpy(new_buf, buf + track, cur_size);
 			send_packet(sockfd, new_buf, cur_size);
@@ -102,48 +128,70 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			else {
 				cur_size = len;
 			}
+			printf ("CUR SIZE: %d", cur_size);
 			memcpy(new_buf, buf + track, cur_size);
 			send_packet(sockfd, new_buf, cur_size);
 			track += cur_size;
 			len = len - cur_size;
 		}
-		printf("%s","CLOSE");
+		printf("%s\n","CLOSE");
 		// printf("track: %d %s", track, new_buf);
 	}
-
-
 	return len;
 }
 
 
 ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
-/* TODO: Your code here. */
+	/* TODO: Your code here. */
+	//char data_buffer[1028];
+	gbnhdr * data_buffer = malloc(sizeof(*data_buffer));
+	int bytes_recd_in_data = recvfrom(sockfd, data_buffer, sizeof *data_buffer, 0, receiver_global, &receiver_socklen_global);
+	int packet_type_recd;
+	packet_type_recd = check_if_data_packet(data_buffer);
+	if (packet_type_recd != 0){
+		return 0;
+	}
+	else{
+		printf("BYTES RECEIVED %d\n", bytes_recd_in_data );
+		printf("LENDATA %d\n", data_buffer->lenData);
+		printf ("%s\n", "DATA packet was received");
 
-int errno;
-//char data_buffer[1028];
-gbnhdr * data_buffer = malloc(sizeof(*data_buffer));
-int bytes_recd_in_data = recvfrom(sockfd, data_buffer, sizeof *data_buffer, 0, receiver_global, &receiver_socklen_global);
-printf("BYTES RECEIVED %d\n", bytes_recd_in_data );
-printf("LENDATA %d\n", data_buffer->lenData);
-// printf ("Data: %s\n", &data_buffer->data);
-	//here we will check if our SYN packet is correct
-	// then we will move on to 'gbn_accept' to send a SYNACK back
-	// int check_packet_val = check_data_packet(data_buffer, bytes_recd_in_data);
-	// if (check_packet_val == -1){
-	// 	return (-1);
-	// }
-	memcpy(buf, data_buffer->data, data_buffer->lenData);
-	// printf("BUF:%s\n", buf);
-	// return bytes_recd_in_data;
-	return data_buffer->lenData;
+		// printf ("Data: %s\n", &data_buffer->data);
+		//here we will check if our SYN packet is correct
+		// then we will move on to 'gbn_accept' to send a SYNACK back
+		// int check_packet_val = check_data_packet(data_buffer, bytes_recd_in_data);
+		// if (check_packet_val == -1){
+		// 	return (-1);
+		// }
+		memcpy(buf, data_buffer->data, data_buffer->lenData);
+		// printf("BUF:%s\n", buf);
+		// return bytes_recd_in_data;
+		return data_buffer->lenData;
+	}
 }
 
 int gbn_close(int sockfd){
-
 	/* TODO: Your code here. */
-
-	return(-1);
+	if (sockfd < 0) {
+		return(-1);
+	}
+	else {
+		gbnhdr create_fin_header = make_header(FIN, 0);
+		int sendfin = sendto(sockfd, &create_fin_header, 4, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
+		// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
+		if (sendfin == -1) return(-1);
+	}
+printf ("%s\n", "SENT THE FIN");
+return 0;
 }
+
+// int gbn_close(int sockfd){
+//
+// 	/* TODO: Your code here. */
+//
+//
+// 	return(-1);
+// }
 
 
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
