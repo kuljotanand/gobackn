@@ -28,7 +28,6 @@ gbnhdr make_header_with_data(int type_command, uint8_t sequence_number, char *bu
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
-	printf("\nSEQUENCE NUMBER IN MAKE HEADER %d\n", sequence_number);
 	header.checksum = 0; // TODO: fill this in later
 	memcpy(header.data, buffer, DATALEN); //data capped at 1024 because that is the max packet size
 	header.lenData = data_length;
@@ -142,18 +141,13 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			memcpy(new_buf, buf + track, cur_size);
 			s_machine.state = SYN_RCVD;
 			while(s_machine.state != ACK_RCVD && attempts < 5) {
-				printf("\nSEQNUM IN GBN_SEND LooPPPP: %d\n", s_machine.seqnum);
 				int send_data = send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
 				alarm(TIMEOUT);
 				s_machine.state = DATA_SENT;
 
-				
+
 				gbnhdr * rec_buf = malloc(sizeof(*rec_buf));
 				int ack_bytes = recvfrom(sockfd, rec_buf, sizeof * rec_buf, 0, sender_global, sender_socklen_global);
-
-
-				printf("RECIEVED SEQNUM: %d\n", rec_buf->seqnum);
-				printf("ACTUAL SEQNUM: %d\n", s_machine.seqnum);
 
 				// If sending data fails
 				if (send_data == -1){
@@ -175,8 +169,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 				// Make sure seqnum of ACK makes sense
 				else if (rec_buf->seqnum != s_machine.seqnum){
 					printf("\nNOT MATCHING SEQNUM\n");
-					printf("RECIEVED SEQNUM: %d\n", rec_buf->seqnum);
-					printf("ACTUAL SEQNUM: %d\n", s_machine.seqnum);
 					attempts++;
 				}
 
@@ -221,7 +213,6 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	gbnhdr * data_buffer = malloc(sizeof(*data_buffer));
 	int bytes_recd_in_data = recvfrom(sockfd, data_buffer, sizeof *data_buffer, 0, receiver_global, &receiver_socklen_global);
 
-	printf("\nSEQNUM IN gbn_recv: %d\n", data_buffer->seqnum);
 	int packet_type_recd;
 	packet_type_recd = check_if_data_packet(data_buffer);
 	if (packet_type_recd == 0) {
