@@ -57,6 +57,8 @@ enum {
 	SYN_SENT,
 	SYN_RCVD,
 	ESTABLISHED,
+	DATA_SENT,
+	ACK_RCVD,
 	FIN_SENT,
 	FIN_RCVD
 };
@@ -77,9 +79,9 @@ ssize_t  maybe_sendto(int  s, const void *buf, size_t len, int flags, \
                       const struct sockaddr *to, socklen_t tolen);
 
 uint16_t checksum(uint16_t *buf, int nwords);
-gbnhdr make_header(int type_command, int sequence_number);
+gbnhdr make_header(int type_command, uint8_t sequence_number);
 int check_header(char *buffer, int ack_packet);
-int send_packet(int sockfd, char buf[], int data_length);
+int send_packet(int sockfd, char buf[], int data_length, uint8_t seqnum);
 int check_if_fin(char *buffer);
 int check_if_data(char *buffer);
 int check_if_synack(char * buffer);

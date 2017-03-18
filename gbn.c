@@ -13,7 +13,8 @@ uint16_t checksum(uint16_t *buf, int nwords)
 	return ~sum;
 }
 
-gbnhdr make_header(int type_command, int sequence_number){
+gbnhdr make_header(int type_command, uint8_t sequence_number){
+	printf("\nIN MAKE HEADER: %d\n", sequence_number);
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
@@ -23,10 +24,11 @@ gbnhdr make_header(int type_command, int sequence_number){
 	return header;
 }
 
-gbnhdr make_header_with_data(int type_command, int sequence_number, char *buffer, int data_length){
+gbnhdr make_header_with_data(int type_command, uint8_t sequence_number, char *buffer, int data_length){
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
+	printf("\nSEQUENCE NUMBER IN MAKE HEADER %d\n", sequence_number);
 	header.checksum = 0; // TODO: fill this in later
 	memcpy(header.data, buffer, DATALEN); //data capped at 1024 because that is the max packet size
 	header.lenData = data_length;
@@ -59,8 +61,8 @@ int check_header(char *buffer, int length){
 
 
 // Sends a packet with the appropriate 4 byte header
-int send_packet(int sockfd,  char buf[], int data_length) {
-	gbnhdr create_header_with_data = make_header_with_data(DATA, 0, buf, data_length);
+int send_packet(int sockfd,  char buf[], int data_length, uint8_t seqnum) {
+	gbnhdr create_header_with_data = make_header_with_data(DATA, seqnum, buf, data_length);
 	// printf("VENMO");
 	printf ("data sent: %s\n", create_header_with_data.data);
 	printf("DATA LENGTH %d\n", create_header_with_data.lenData);
@@ -107,10 +109,19 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	*       up into multiple packets - you don't have to worry
 	*       about getting more than N * DATALEN.
 	*/
+
+	// Tracks state of slow vs. fast mode. 0 = slow mode, 1 = fast mode
+	int cur_mode = 0;
+	int seed_seq_num = rand();
+	s_machine.window_size = 2;
+	s_machine.seqnum = seed_seq_num;
+
+	printf("\nSEQNUM IN GBN_SEND%d\n", s_machine.seqnum);
 	//  make packets
 	int orig_len = len;
 	int cur_size = 0;
 	int track = 0;
+	int errno; // track timoue status
 	char new_buf[DATALEN];
 
 	while (track != orig_len) {
@@ -127,8 +138,59 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 				cur_size = len;
 				printf ("CUR SIZE: %d", cur_size);
 			}
+			int attempts = 0;
 			memcpy(new_buf, buf + track, cur_size);
-			send_packet(sockfd, new_buf, cur_size);
+			s_machine.state = SYN_RCVD;
+			while(s_machine.state != ACK_RCVD && attempts < 5) {
+				printf("\nSEQNUM IN GBN_SEND LooPPPP: %d\n", s_machine.seqnum);
+				int send_data = send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
+				alarm(TIMEOUT);
+				s_machine.state = DATA_SENT;
+
+				
+				gbnhdr * rec_buf = malloc(sizeof(*rec_buf));
+				int ack_bytes = recvfrom(sockfd, rec_buf, sizeof * rec_buf, 0, sender_global, sender_socklen_global);
+
+
+				printf("RECIEVED SEQNUM: %d\n", rec_buf->seqnum);
+				printf("ACTUAL SEQNUM: %d\n", s_machine.seqnum);
+
+				// If sending data fails
+				if (send_data == -1){
+					printf("\nLUIS SEND DATA FAILED\n");
+					attempts++;
+				}
+
+				// If ack not received before timeout
+				else if (errno == EINTR) {
+					printf("\n LUIS TIMEOUT OCCURED\n");
+					attempts++;
+				}
+
+				else if (rec_buf->type != DATAACK) {
+					printf("\n LUIS NOT AN ACK\n");
+					attempts++;
+				}
+
+				// Make sure seqnum of ACK makes sense
+				else if (rec_buf->seqnum != s_machine.seqnum){
+					printf("\nNOT MATCHING SEQNUM\n");
+					printf("RECIEVED SEQNUM: %d\n", rec_buf->seqnum);
+					printf("ACTUAL SEQNUM: %d\n", s_machine.seqnum);
+					attempts++;
+				}
+
+				// OTHERWISE, ACK was received SUCCESFULLY
+				else {
+					s_machine.state = ACK_RCVD;
+				}
+			}
+
+			// CLOSE CONNECTION IF NOT SENT AFTER 5 TIMEs
+			if (s_machine.state == DATA_SENT) {
+				return -1;
+			}
+
 			track += cur_size;
 			len = len - cur_size;
 
@@ -142,7 +204,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			}
 			printf ("CUR SIZE: %d", cur_size);
 			memcpy(new_buf, buf + track, cur_size);
-			send_packet(sockfd, new_buf, cur_size);
+			send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
 			track += cur_size;
 			len = len - cur_size;
 		}
@@ -158,8 +220,17 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	//char data_buffer[1028];
 	gbnhdr * data_buffer = malloc(sizeof(*data_buffer));
 	int bytes_recd_in_data = recvfrom(sockfd, data_buffer, sizeof *data_buffer, 0, receiver_global, &receiver_socklen_global);
+
+	printf("\nSEQNUM IN gbn_recv: %d\n", data_buffer->seqnum);
 	int packet_type_recd;
 	packet_type_recd = check_if_data_packet(data_buffer);
+	if (packet_type_recd == 0) {
+		gbnhdr create_ack_header = make_header(DATAACK, data_buffer->seqnum);
+		int sendack = sendto(sockfd, &create_ack_header, 4, 0, sender_global, sender_socklen_global);
+		if (sendack == -1){
+			return -1;
+		}
+	}
 	if (packet_type_recd != 0){
 		gbnhdr create_finack_header = make_header(FINACK, 0);
 		int sendfinack = sendto(sockfd, &create_finack_header, 4, 0, sender_global, sender_socklen_global);
@@ -211,7 +282,7 @@ int gbn_close(int sockfd, int isFin){
 		else {
 			gbnhdr create_finack_header = make_header(FINACK, 0);
 			int sendfinack = sendto(sockfd, &create_finack_header, 4, 0, sender_global, sender_socklen_global);
-			if (sendfinack = -1)
+			if (sendfinack == -1)
 				return -1;
 			printf ("%s\n", "SENT THE FINACK");
 		}
