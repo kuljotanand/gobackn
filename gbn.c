@@ -14,7 +14,6 @@ uint16_t checksum(uint16_t *buf, int nwords)
 }
 
 gbnhdr make_header(int type_command, uint8_t sequence_number){
-	printf("\nIN MAKE HEADER: %d\n", sequence_number);
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
@@ -115,7 +114,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	s_machine.window_size = 2;
 	s_machine.seqnum = seed_seq_num;
 
-	printf("\nSEQNUM IN GBN_SEND%d\n", s_machine.seqnum);
 	//  make packets
 	int orig_len = len;
 	int cur_size = 0;
@@ -175,6 +173,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 				// OTHERWISE, ACK was received SUCCESFULLY
 				else {
 					s_machine.state = ACK_RCVD;
+					cur_mode = 1;
 				}
 			}
 
@@ -188,19 +187,214 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 			// Send the rest of the packets
 		} else {
+
 			if (len >= DATALEN) {
 				cur_size = DATALEN;
 			}
 			else {
 				cur_size = len;
 			}
-			printf ("CUR SIZE: %d", cur_size);
-			memcpy(new_buf, buf + track, cur_size);
-			send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
-			track += cur_size;
-			len = len - cur_size;
+			// printf ("CUR SIZE: %d", cur_size);
+
+			// Slow MODE
+			if (cur_mode == 0) {
+				int attempts = 0;
+				memcpy(new_buf, buf + track, cur_size);
+				s_machine.state = ESTABLISHED;
+				while(s_machine.state != ACK_RCVD && attempts < 5) {
+					int send_data = send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
+					alarm(TIMEOUT);
+					s_machine.state = DATA_SENT;
+
+
+					gbnhdr * rec_buf = malloc(sizeof(*rec_buf));
+					int ack_bytes = recvfrom(sockfd, rec_buf, sizeof * rec_buf, 0, sender_global, sender_socklen_global);
+
+					// If sending data fails
+					if (send_data == -1){
+						printf("\nLUIS SEND DATA FAILED\n");
+						attempts++;
+					}
+
+					// If ack not received before timeout
+					else if (errno == EINTR) {
+						printf("\n LUIS TIMEOUT OCCURED\n");
+						attempts++;
+					}
+
+					else if (rec_buf->type != DATAACK) {
+						printf("\n LUIS NOT AN ACK\n");
+						attempts++;
+					}
+
+					// Make sure seqnum of ACK makes sense
+					else if (rec_buf->seqnum != s_machine.seqnum){
+						printf("\nNOT MATCHING SEQNUM\n");
+						attempts++;
+					}
+
+					// OTHERWISE, ACK was received SUCCESFULLY. GO TO FAST MODE
+					else {
+						s_machine.state = ACK_RCVD;
+						cur_mode = 1;
+						s_machine.seqnum += 1;
+						track += cur_size;
+						len = len - cur_size;
+					}
+				}
+			}
+
+			// FAST MODE
+			else {
+				printf("\nENTERING FAST MODE\n");
+
+				int errno;
+
+				memcpy(new_buf, buf + track, cur_size);
+				s_machine.state = ESTABLISHED;
+
+				int first_p_track = track;
+				int first_p_len = len;
+				int first_seq_num = s_machine.seqnum;
+
+				// send first packet
+				int send_data_first = send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
+				s_machine.state = DATA_SENT;
+
+
+				// Clear the buffer
+				memset(new_buf, '\0', sizeof(new_buf));
+
+				// MOVE TO THE NEXT PACKET
+
+				// If there's no more packets to be sent in between the first and second
+				if (track >= orig_len) {
+					continue;
+				}
+
+				// Prepare second packet
+				s_machine.seqnum += 1;
+				track += cur_size;
+				len = len - cur_size;
+
+				int second_p_track = track;
+				int second_p_len = len;
+				int second_seq_num = s_machine.seqnum;
+
+				// Check for size of the next packet
+				if (len >= DATALEN) {
+					cur_size = DATALEN;
+				}
+				else {
+					cur_size = len;
+				}
+
+				// send second packet
+				memcpy(new_buf, buf + track, cur_size);
+				int send_data_second = send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
+				s_machine.seqnum += 1;
+				track += cur_size;
+				len = len - cur_size;
+
+				// CHECK FIRST PACKET DELIVERY SUCCESS
+				alarm(TIMEOUT);
+				gbnhdr * rec_buf_first = malloc(sizeof(*rec_buf_first));
+				int ack_bytes_first = recvfrom(sockfd, rec_buf_first, sizeof * rec_buf_first, 0, sender_global, sender_socklen_global);
+
+				// Go back to slow mode with first packet
+				if (send_data_first == -1){
+					track = first_p_track;
+					len = first_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = first_seq_num;
+					continue;
+				}
+
+				// Check if first packet timed out before ACK recieved
+				else if (errno == EINTR) {
+					track = first_p_track;
+					len = first_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = first_seq_num;
+					continue;
+				}
+
+				// Make sure response is a DATAACK for first packet
+				else if (rec_buf_first->type != DATAACK) {
+					track = first_p_track;
+					len = first_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = first_seq_num;
+					continue;
+				}
+
+				// CHECK IF SEQ_NUMS OF ACK MATCH
+				// else if (rec_buf_first->seqnum != s_machine.seqnum - 2){
+				// 	// printf("\n%s\n", "IN CHECK FOR FIRST PACKET SEQNUM" );
+				// 	printf("\nFIRST SEQ NUM %d\n", s_machine.seqnum);
+				// 	printf("\nRESPONSE SEQ NUM %d\n", rec_buf_first->seqnum - 2);
+				// 	track = first_p_track;
+				// 	len = first_p_len;
+				// 	cur_mode = 0;
+				// 	s_machine.seqnum = first_seq_num;
+				// 	continue;
+				// }
+
+
+				// CHECK SECOND PACKET
+				alarm(TIMEOUT);
+				gbnhdr * rec_buf_second = malloc(sizeof(*rec_buf_second));
+				int ack_bytes_second = recvfrom(sockfd, rec_buf_second, sizeof * rec_buf_second, 0, sender_global, sender_socklen_global);
+
+				// Go back to slow mode with second packet
+				if (send_data_second == -1){
+					track = second_p_track;
+					len = second_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = second_seq_num;
+					continue;
+				}
+
+				// Check if second packet timed out before ACK recieved
+				else if (errno == EINTR) {
+					track = second_p_track;
+					len = second_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = second_seq_num;
+					continue;
+				}
+
+				// Make sure response is a DATAACK for second packet
+				else if (rec_buf_second->type != DATAACK) {
+					track = second_p_track;
+					len = second_p_len;
+					cur_mode = 0;
+					s_machine.seqnum = second_seq_num;
+					continue;
+				}
+
+				// CHECK IF SEQ_NUMS OF SECOND ACK MATCH
+				// else if (rec_buf_second->seqnum != s_machine.seqnum - 2){
+				// 	// printf("\n%s\n", "IN CHECK FOR FIRST PACKET SEQNUM" );
+				// 	printf("\nFIRST SEQ NUM %d\n", s_machine.seqnum);
+				// 	printf("\nRESPONSE SEQ NUM %d\n", rec_buf_first->seqnum - 2);
+				// 	track = second_p_track;
+				// 	len = second_p_len;
+				// 	cur_mode = 0;
+				// 	s_machine.seqnum = second_seq_num;
+				// 	continue;
+				// }
+
+			}
+
+
+			// memcpy(new_buf, buf + track, cur_size);
+			// send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
+
+			// track += cur_size;
+			// len = len - cur_size;
 		}
-		printf("%s\n","CLOSE");
+		printf("%s\n","PACKET SENT");
 		// printf("track: %d %s", track, new_buf);
 	}
 	return len;
