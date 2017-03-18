@@ -8,8 +8,8 @@ uint16_t checksum(uint16_t *buf, int nwords)
 
 	for (sum = 0; nwords > 0; nwords--)
 		sum += *buf++;
-	sum = (sum >> 16) + (sum & 0xffff);
-	sum += (sum >> 16);
+	sum = (sum >> 8) + (sum & 0xffff);
+	sum += (sum >> 8);
 	return ~sum;
 }
 
@@ -27,7 +27,7 @@ gbnhdr make_header_with_data(int type_command, uint8_t sequence_number, char *bu
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
-	header.checksum = 0; // TODO: fill this in later
+	header.checksum = 0; // Default checksum value
 	memcpy(header.data, buffer, DATALEN); //data capped at 1024 because that is the max packet size
 	header.lenData = data_length;
 
@@ -61,10 +61,14 @@ int check_header(char *buffer, int length){
 // Sends a packet with the appropriate 4 byte header
 int send_packet(int sockfd,  char buf[], int data_length, uint8_t seqnum) {
 	gbnhdr create_header_with_data = make_header_with_data(DATA, seqnum, buf, data_length);
-	// printf("VENMO");
+
+	// Calculate checksum
+	create_header_with_data.checksum = checksum(buf, create_header_with_data.lenData);
+	printf("\nCHECKSUM: %d\n", create_header_with_data.checksum);
+
 	printf ("data sent: %s\n", create_header_with_data.data);
 	printf("DATA LENGTH %d\n", create_header_with_data.lenData);
-	// printf(buf);
+
 	int senddata = sendto(sockfd, &create_header_with_data, sizeof create_header_with_data, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
 	// 4 from: DATA =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
 	if (senddata == -1) return(-1);
@@ -397,6 +401,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 		printf("%s\n","PACKET SENT");
 		// printf("track: %d %s", track, new_buf);
 	}
+	s_machine.isFin = 1;
 	return len;
 }
 
@@ -407,9 +412,25 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 	gbnhdr * data_buffer = malloc(sizeof(*data_buffer));
 	int bytes_recd_in_data = recvfrom(sockfd, data_buffer, sizeof *data_buffer, 0, receiver_global, &receiver_socklen_global);
 
+	// Check the packet
 	int packet_type_recd;
 	packet_type_recd = check_if_data_packet(data_buffer);
 	if (packet_type_recd == 0) {
+
+		// Checksum logic
+		// (data_buffer), bytes_recd_in_data)
+		char cp_buf[data_buffer->lenData - 2];
+		memcpy(cp_buf, data_buffer->data, data_buffer->lenData);
+		printf("\nDATA ON RECIEVER %s\n", cp_buf);
+		int cSum = checksum(buf, data_buffer->lenData);
+		printf("\nCHECKSUM ON RECIEVER: %d\n", cSum);
+
+		// Make sure checksums match
+		// if (data_buffer->checksum != cSum) {
+		// 	printf("DATA Packet failed Checksum");
+		// 	return - 1;
+		// }
+
 		gbnhdr create_ack_header = make_header(DATAACK, data_buffer->seqnum);
 		int sendack = sendto(sockfd, &create_ack_header, 4, 0, sender_global, sender_socklen_global);
 		if (sendack == -1){
@@ -447,7 +468,7 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 }
 
 // if fin, isFin = 1, else isFin = 0 for Finack
-int gbn_close(int sockfd, int isFin){
+int gbn_close(int sockfd){
 	/* TODO: Your code here. */
 
 	if (sockfd < 0) {
@@ -455,7 +476,7 @@ int gbn_close(int sockfd, int isFin){
 	}
 
 	else {
-		if (isFin == 1) {
+		if (s_machine.isFin == 1) {
 			gbnhdr create_fin_header = make_header(FIN, 0);
 			int sendfin = sendto(sockfd, &create_fin_header, 4, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
 			// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
@@ -470,6 +491,7 @@ int gbn_close(int sockfd, int isFin){
 			if (sendfinack == -1)
 				return -1;
 			printf ("%s\n", "SENT THE FINACK");
+			close(sockfd);
 		}
 	}
 
@@ -499,6 +521,7 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 	gbnhdr create_syn_header = make_header(SYN, 0);
 	s_machine.state = SYN_SENT;
 	s_machine.window_size = 1; // only sending 1 SYN packet
+	s_machine.isFin = 0;
 
 	// Attempt to send the SYN packet up to 5 times
 	while (s_machine.state == SYN_SENT && attempts < 5) {
