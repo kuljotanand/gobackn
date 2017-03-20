@@ -52,11 +52,6 @@ int send_packet(int sockfd,  char buf[], int data_length, uint8_t seqnum) {
 
 	// Calculate checksum
 	create_header_with_data.checksum = checksum(buf, create_header_with_data.lenData);
-	printf("\nCHECKSUM: %d\n", create_header_with_data.checksum);
-
-	printf ("data sent: %s\n", create_header_with_data.data);
-	printf("DATA LENGTH %d\n", create_header_with_data.lenData);
-
 	int senddata = sendto(sockfd, &create_header_with_data, sizeof create_header_with_data, 0, receiver_global, receiver_socklen_global); //hardcoded 4 since that's always the length of the packet header
 	// 4 from: DATA =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
 	if (senddata == -1) return(-1);
@@ -120,7 +115,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 			}
 			else {
 				cur_size = len;
-				printf ("CUR SIZE: %d", cur_size);
+				// printf ("CUR SIZE: %d", cur_size);
 			}
 			int attempts = 0;
 			memcpy(new_buf, buf + track, cur_size);
@@ -136,24 +131,24 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 				// If sending data fails
 				if (send_data == -1){
-					printf("\nSEND DATA FAILED\n");
+					// printf("\nSEND DATA FAILED\n");
 					attempts++;
 				}
 
 				// If ack not received before timeout
 				else if (errno == EINTR) {
-					printf("\nTIMEOUT OCCURED\n");
+					// printf("\nTIMEOUT OCCURED\n");
 					attempts++;
 				}
 
 				else if (rec_buf->type != DATAACK) {
-					printf("\nNOT AN ACK\n");
+					// printf("\nNOT AN ACK\n");
 					attempts++;
 				}
 
 				// Make sure seqnum of ACK makes sense
 				else if (rec_buf->seqnum != s_machine.seqnum){
-					printf("\nNOT MATCHING SEQNUM\n");
+					// printf("\nNOT MATCHING SEQNUM\n");
 					attempts++;
 				}
 
@@ -199,24 +194,21 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 					// If sending data fails
 					if (send_data == -1){
-						printf("\nSEND DATA FAILED\n");
 						attempts++;
 					}
 
 					// If ack not received before timeout
 					else if (errno == EINTR) {
-						printf("\nTIMEOUT OCCURED\n");
 						attempts++;
 					}
 
+					// If packet was not a data type
 					else if (rec_buf->type != DATAACK) {
-						printf("\nNOT A DATA ACK\n");
 						attempts++;
 					}
 
 					// Make sure seqnum of ACK makes sense
 					else if (rec_buf->seqnum != s_machine.seqnum){
-						printf("\nNOT MATCHING SEQNUM\n");
 						attempts++;
 					}
 
@@ -233,8 +225,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 			// FAST MODE
 			else {
-				printf("\nENTERING FAST MODE\n");
-
 				int errno;
 
 				memcpy(new_buf, buf + track, cur_size);
@@ -348,8 +338,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 				}
 			}
 		}
-		printf("%s\n","PACKET SENT");
-		// printf("track: %d %s", track, new_buf);
 	}
 	s_machine.isFin = 1;
 	return len;
@@ -371,9 +359,7 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		// (data_buffer), bytes_recd_in_data)
 		char cp_buf[data_buffer->lenData - 2];
 		memcpy(cp_buf, data_buffer->data, data_buffer->lenData);
-		printf("\nDATA ON RECIEVER %s\n", cp_buf);
 		int cSum = checksum(buf, data_buffer->lenData);
-		printf("\nCHECKSUM ON RECIEVER: %d\n", cSum);
 
 		gbnhdr create_ack_header = make_header(DATAACK, data_buffer->seqnum);
 		int sendack = sendto(sockfd, &create_ack_header, 4, 0, sender_global, sender_socklen_global);
@@ -388,14 +374,10 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 			return(-1);
 		}
 		else{
-			printf ("%s\n", "SENT THE FINACK");
 			return 0;
 		}
 	}
 	else{
-		printf("BYTES RECEIVED %d\n", bytes_recd_in_data );
-		printf("LENDATA %d\n", data_buffer->lenData);
-		printf ("%s\n", "DATA packet was received");
 
 		memcpy(buf, data_buffer->data, data_buffer->lenData);
 		// printf("BUF:%s\n", buf);
@@ -419,7 +401,6 @@ int gbn_close(int sockfd){
 			// 4 from: SYN =1 byte, seqnum is 1 byte, checksum is 16 byte, and data is always empty for the SYN packet
 			if (sendfin == -1)
 				return-1;
-			printf ("%s\n", "SENT THE FIN");
 		}
 		// FINACK
 		else {
@@ -427,7 +408,6 @@ int gbn_close(int sockfd){
 			int sendfinack = sendto(sockfd, &create_finack_header, 4, 0, sender_global, sender_socklen_global);
 			if (sendfinack == -1)
 				return -1;
-			printf ("%s\n", "SENT THE FINACK");
 			close(sockfd);
 		}
 	}
@@ -468,19 +448,16 @@ int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
 		// If nothing was recieved, aka a timeout occurred
 		if (errno == EINTR) {
-			printf("SYNACK NEVER CAME, TIMED OUT\n");
 			attempts++;
 		}
 		else { // a packet was sent back from the reciever
 			// If a synack was received
 			if (check_if_synack(buf) == 0) {
 				s_machine.state = ESTABLISHED;
-				printf("MESSAGE SUCCESFULLY ACKED\n");
 				return 0;
 			}
 
 			else {
-				printf("SYNACK NOT RECEIVED, TRY AGAIN\n");
 				attempts++;
 			}
 
@@ -507,7 +484,7 @@ int gbn_listen(int sockfd, int backlog){
 int errno;
 char buffer[1028];
 int ack_packet = recvfrom(sockfd, buffer, sizeof buffer, 0, sender_global, &sender_socklen_global); //TODO: change last 2 var names
-printf ("ACK packet size is %d \n", ack_packet);
+// printf ("ACK packet size is %d \n", ack_packet);
 	//here we will check if our SYN packet is correct
 	// then we will move on to 'gbn_accept' to send a SYNACK back
 	int check_val = check_header(buffer, ack_packet);
