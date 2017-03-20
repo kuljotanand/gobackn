@@ -8,8 +8,8 @@ uint16_t checksum(uint16_t *buf, int nwords)
 
 	for (sum = 0; nwords > 0; nwords--)
 		sum += *buf++;
-	sum = (sum >> 8) + (sum & 0xffff);
-	sum += (sum >> 8);
+	sum = (sum >> 16) + (sum & 0xffff);
+	sum += (sum >> 16);
 	return ~sum;
 }
 
@@ -17,8 +17,7 @@ gbnhdr make_header(int type_command, uint8_t sequence_number){
 	gbnhdr header;
 	header.type = type_command;
 	header.seqnum = sequence_number;
-	header.checksum = 0; // TODO: fill this in later
-	// strcpy(header.data, ""); //TODO: fill this in later
+	header.checksum = 0; // initial checksum
 
 	return header;
 }
@@ -46,17 +45,6 @@ int check_header(char *buffer, int length){
 		return 0;
 	}
 }
-
-
-// int check_data_packet(char *buffer, int length){
-// 	if (buffer[0] == DATA){
-// 		return 0;
-// 	}
-// 	else {
-// 		return(-1);
-// 	}
-// }
-
 
 // Sends a packet with the appropriate 4 byte header
 int send_packet(int sockfd,  char buf[], int data_length, uint8_t seqnum) {
@@ -106,11 +94,6 @@ int check_if_synack(char * buffer) {
 
 ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 	/* TODO: Your code here. */
-	/* Hint: Check the data length field 'len'.
-	*       If it is > DATALEN, you will have to split the data
-	*       up into multiple packets - you don't have to worry
-	*       about getting more than N * DATALEN.
-	*/
 
 	// Tracks state of slow vs. fast mode. 0 = slow mode, 1 = fast mode
 	int cur_mode = 0;
@@ -153,18 +136,18 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 				// If sending data fails
 				if (send_data == -1){
-					printf("\nLUIS SEND DATA FAILED\n");
+					printf("\nSEND DATA FAILED\n");
 					attempts++;
 				}
 
 				// If ack not received before timeout
 				else if (errno == EINTR) {
-					printf("\n LUIS TIMEOUT OCCURED\n");
+					printf("\nTIMEOUT OCCURED\n");
 					attempts++;
 				}
 
 				else if (rec_buf->type != DATAACK) {
-					printf("\n LUIS NOT AN ACK\n");
+					printf("\nNOT AN ACK\n");
 					attempts++;
 				}
 
@@ -216,18 +199,18 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 
 					// If sending data fails
 					if (send_data == -1){
-						printf("\nLUIS SEND DATA FAILED\n");
+						printf("\nSEND DATA FAILED\n");
 						attempts++;
 					}
 
 					// If ack not received before timeout
 					else if (errno == EINTR) {
-						printf("\n LUIS TIMEOUT OCCURED\n");
+						printf("\nTIMEOUT OCCURED\n");
 						attempts++;
 					}
 
 					else if (rec_buf->type != DATAACK) {
-						printf("\n LUIS NOT AN ACK\n");
+						printf("\nNOT A DATA ACK\n");
 						attempts++;
 					}
 
@@ -332,19 +315,6 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 					continue;
 				}
 
-				// CHECK IF SEQ_NUMS OF ACK MATCH
-				// else if (rec_buf_first->seqnum != s_machine.seqnum - 2){
-				// 	// printf("\n%s\n", "IN CHECK FOR FIRST PACKET SEQNUM" );
-				// 	printf("\nFIRST SEQ NUM %d\n", s_machine.seqnum);
-				// 	printf("\nRESPONSE SEQ NUM %d\n", rec_buf_first->seqnum - 2);
-				// 	track = first_p_track;
-				// 	len = first_p_len;
-				// 	cur_mode = 0;
-				// 	s_machine.seqnum = first_seq_num;
-				// 	continue;
-				// }
-
-
 				// CHECK SECOND PACKET
 				alarm(TIMEOUT);
 				gbnhdr * rec_buf_second = malloc(sizeof(*rec_buf_second));
@@ -376,27 +346,7 @@ ssize_t gbn_send(int sockfd, const void *buf, size_t len, int flags){
 					s_machine.seqnum = second_seq_num;
 					continue;
 				}
-
-				// CHECK IF SEQ_NUMS OF SECOND ACK MATCH
-				// else if (rec_buf_second->seqnum != s_machine.seqnum - 2){
-				// 	// printf("\n%s\n", "IN CHECK FOR FIRST PACKET SEQNUM" );
-				// 	printf("\nFIRST SEQ NUM %d\n", s_machine.seqnum);
-				// 	printf("\nRESPONSE SEQ NUM %d\n", rec_buf_first->seqnum - 2);
-				// 	track = second_p_track;
-				// 	len = second_p_len;
-				// 	cur_mode = 0;
-				// 	s_machine.seqnum = second_seq_num;
-				// 	continue;
-				// }
-
 			}
-
-
-			// memcpy(new_buf, buf + track, cur_size);
-			// send_packet(sockfd, new_buf, cur_size, s_machine.seqnum);
-
-			// track += cur_size;
-			// len = len - cur_size;
 		}
 		printf("%s\n","PACKET SENT");
 		// printf("track: %d %s", track, new_buf);
@@ -425,12 +375,6 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		int cSum = checksum(buf, data_buffer->lenData);
 		printf("\nCHECKSUM ON RECIEVER: %d\n", cSum);
 
-		// Make sure checksums match
-		// if (data_buffer->checksum != cSum) {
-		// 	printf("DATA Packet failed Checksum");
-		// 	return - 1;
-		// }
-
 		gbnhdr create_ack_header = make_header(DATAACK, data_buffer->seqnum);
 		int sendack = sendto(sockfd, &create_ack_header, 4, 0, sender_global, sender_socklen_global);
 		if (sendack == -1){
@@ -453,13 +397,6 @@ ssize_t gbn_recv(int sockfd, void *buf, size_t len, int flags){
 		printf("LENDATA %d\n", data_buffer->lenData);
 		printf ("%s\n", "DATA packet was received");
 
-		// printf ("Data: %s\n", &data_buffer->data);
-		//here we will check if our SYN packet is correct
-		// then we will move on to 'gbn_accept' to send a SYNACK back
-		// int check_packet_val = check_data_packet(data_buffer, bytes_recd_in_data);
-		// if (check_packet_val == -1){
-		// 	return (-1);
-		// }
 		memcpy(buf, data_buffer->data, data_buffer->lenData);
 		// printf("BUF:%s\n", buf);
 		// return bytes_recd_in_data;
@@ -497,15 +434,6 @@ int gbn_close(int sockfd){
 
 	return 0;
 }
-
-// int gbn_close(int sockfd){
-//
-// 	/* TODO: Your code here. */
-//
-//
-// 	return(-1);
-// }
-
 
 int gbn_connect(int sockfd, const struct sockaddr *server, socklen_t socklen){
 
